@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 13px; overflow: hidden; }
+body {
+  background: #000;
+  color: #e5e2e1;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* Terminal scrollbar */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: #0e0e0e; }
+::-webkit-scrollbar-thumb { background: #424754; }
+::-webkit-scrollbar-thumb:hover { background: #8c909f; }
+
+/* No border-radius — terminal aesthetic */
+* { border-radius: 0 !important; }
+
+/* Ticker */
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee {
+  display: flex;
+  animation: marquee 35s linear infinite;
+  white-space: nowrap;
+}
+.animate-marquee:hover { animation-play-state: paused; }
+
+/* Live dot pulse */
+@keyframes livePulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.live-dot { animation: livePulse 2s ease infinite; }
+
+/* Typing dots */
+@keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-3px)} }
+.dot-1 { animation: bounce 0.9s ease infinite; }
+.dot-2 { animation: bounce 0.9s ease 0.15s infinite; }
+.dot-3 { animation: bounce 0.9s ease 0.3s infinite; }
+
+/* Slide up */
+@keyframes slideUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.animate-slide-up { animation: slideUp 0.2s ease-out; }
+
+/* Panel hover */
+.terminal-row:hover { background: #1a1a1a; }
+
+/* Chart grid lines */
+.chart-grid { opacity: 0.06; }
+
+/* FRED chart area */
+.fred-gradient {
+  background: linear-gradient(180deg, rgba(173,198,255,0.12) 0%, rgba(173,198,255,0) 100%);
+}
+.fred-gradient-green {
+  background: linear-gradient(180deg, rgba(78,222,163,0.12) 0%, rgba(78,222,163,0) 100%);
+}
+.fred-gradient-red {
+  background: linear-gradient(180deg, rgba(255,84,81,0.12) 0%, rgba(255,84,81,0) 100%);
+}
+
+/* Material icons */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  font-size: 18px;
+  line-height: 1;
+  user-select: none;
+}
