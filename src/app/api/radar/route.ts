@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import type { RadarEvent, RadarCategory } from '@/lib/radar-types'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 const FH_KEY   = process.env.FINNHUB_KEY  || ''
 const GROQ_KEY = process.env.GROQ_API_KEY || ''
 
