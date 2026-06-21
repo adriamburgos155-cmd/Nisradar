@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import type { VolatilityGauge, NasdaqSnapshot } from '@/lib/radar-types'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 const FH_KEY = process.env.FINNHUB_KEY || ''
 
 async function yahooQuote(symbol: string) {
