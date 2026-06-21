@@ -5,6 +5,7 @@ import { CATEGORY_LABELS } from '@/lib/radar-types'
 import { RadarEventCard } from './RadarEventCard'
 import { VolatilityGaugeCard, NasdaqSnapshotRow } from './VolatilityGauge'
 import { MasterAnalysisCard } from './MasterAnalysisCard'
+import { FxCalendarCard } from './FxCalendarCard'
 import { clsx } from 'clsx'
 
 interface RadarViewProps {
@@ -82,6 +83,8 @@ export function RadarView({ events, gauge, snapshot, fred, isMock, mockReason, i
         {/* Left: Volatility + filters */}
         <div className="flex flex-col gap-2.5 overflow-y-auto">
           <VolatilityGaugeCard gauge={gauge} snapshot={snapshot} />
+
+          <FxCalendarCard />
 
           <div className="bg-surface-container-lowest border border-outline-variant p-2">
             <div className="font-mono text-[8px] text-outline uppercase px-1 mb-1">Filtrar</div>
