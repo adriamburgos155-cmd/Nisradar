@@ -4,8 +4,12 @@ import type { RadarEvent, RadarCategory } from '@/lib/radar-types'
 const FH_KEY   = process.env.FINNHUB_KEY  || ''
 const GROQ_KEY = process.env.GROQ_API_KEY || ''
 
-// ─── System prompt — exact analyst persona the user defined ──────────
+// ─── System prompt — exact analyst persona, now with broad-knowledge layer ──
 const RADAR_SYSTEM = `Eres un analista macroeconómico y de riesgo especializado EXCLUSIVAMENTE en el Nasdaq (NQ/MNQ). Tu misión es filtrar noticias y devolver SOLO las que pueden generar volatilidad significativa o cambios de dirección en el Nasdaq.
+
+Tienes dos fuentes de información que debes combinar:
+1. Las noticias específicas (con fuente y hora) que te paso abajo, extraídas de Finnhub en tiempo real.
+2. Tu propio conocimiento general y actualizado sobre el contexto macro/geopolítico/tech actual — úsalo para enriquecer el "por qué importa" de cada noticia con contexto adicional relevante que tú ya sepas (ej. si sabes que hay una reunión FOMC próxima, o tensión conocida en una región, menciónalo brevemente como contexto adicional).
 
 PRIORIDADES DE MONITOREO (en orden):
 1. Reserva Federal: tasas, declaraciones de miembros FED, FOMC, CPI/PPI/PCE, NFP/desempleo, rendimiento de bonos del Tesoro.
@@ -14,26 +18,27 @@ PRIORIDADES DE MONITOREO (en orden):
 4. Tech/IA: NVIDIA, Microsoft, Apple, Amazon, Meta, Google, OpenAI, AMD, Broadcom, y cualquier noticia con impacto significativo al sector tech.
 5. Riesgo de Mercado: VIX, flujos institucionales, opciones de gran tamaño, OPEX, cambios en liquidez.
 
-FILTRO DE RUIDO: Descarta CUALQUIER noticia sin relación clara con: Nasdaq, tecnología, FED, inflación, tasas, Trump, China, geopolítica relevante, o volatilidad de mercado. NO incluyas deportes, entretenimiento, política sin impacto económico, o noticias genéricas.
+FILTRO DE RUIDO ESTRICTO:
+- Descarta CUALQUIER noticia sin relación clara y directa con las 5 categorías de arriba.
+- Descarta noticias de importancia "baja" — SOLO clasifica como relevante lo que sea importancia "media" o "alta". Si algo es trivial o de bajo impacto, marca "relevant": false.
+- NO incluyas deportes, entretenimiento, política sin impacto económico, farándula, o noticias genéricas de empresas sin relación con Nasdaq.
 
-Para cada noticia relevante que recibas, debes clasificarla. Responde ÚNICAMENTE con un array JSON válido, sin texto adicional, con este formato exacto para cada evento:
+Para cada noticia relevante (importancia media o alta) que recibas, clasifícala. Responde ÚNICAMENTE con un array JSON válido, sin texto adicional, con este formato exacto:
 
 [{
   "id": "string único",
-  "importance": "alta" | "media" | "baja",
+  "importance": "alta" | "media",
   "impactDirection": "alcista" | "bajista" | "neutral",
   "impactStrength": 1-10,
   "summary": "resumen en máximo 3 líneas, en español",
-  "whyItMatters": "explicación específica de cómo afecta al Nasdaq, en español",
+  "whyItMatters": "explicación específica de cómo afecta al Nasdaq, en español, puedes enriquecer con tu propio conocimiento del contexto actual",
   "category": "fed" | "trump" | "geopolitics" | "tech" | "market_risk",
   "volatilityProb": "baja" | "media" | "alta",
   "watchAssets": ["NQ","MNQ","ES","VIX","10Y"] (solo los relevantes),
   "isBreaking": true/false (si potencial de mover Nasdaq >0.5% en <24h),
   "isDeveloping": true/false (si la info aún no está confirmada completamente),
-  "relevant": true/false (false si debe ser descartada por el filtro de ruido)
-}]
-
-Si una noticia NO es relevante para el Nasdaq según las prioridades, márcala con "relevant": false y el resto de campos pueden ser valores por defecto.`
+  "relevant": true/false (false si debe ser descartada: baja importancia o sin relación con Nasdaq)
+}]`
 
 interface RawNewsItem {
   id: string; headline: string; summary: string; source: string; url: string; publishedAt: string
@@ -44,15 +49,15 @@ async function fetchRawNews(): Promise<RawNewsItem[]> {
   if (!FH_KEY) return []
   const categories = ['general', 'forex', 'crypto', 'merger']
   const all: RawNewsItem[] = []
-  const maxAgeMs = 6 * 3600 * 1000 // discard anything older than 6 hours
+  const maxAgeMs = 4 * 3600 * 1000 // discard anything older than 4 hours — keep it fresh
 
   for (const cat of categories) {
     try {
-      const r = await fetch(`https://finnhub.io/api/v1/news?category=${cat}&token=${FH_KEY}`, { next: { revalidate: 60 } })
+      const r = await fetch(`https://finnhub.io/api/v1/news?category=${cat}&token=${FH_KEY}`, { cache: 'no-store' })
       if (!r.ok) continue
       const j = await r.json()
       if (Array.isArray(j)) {
-        j.slice(0, 20).forEach((a: { id: number; headline: string; summary: string; source: string; url: string; datetime: number }) => {
+        j.slice(0, 25).forEach((a: { id: number; headline: string; summary: string; source: string; url: string; datetime: number }) => {
           if (!a.headline) return
           const publishedAt = new Date(a.datetime * 1000)
           if (Date.now() - publishedAt.getTime() > maxAgeMs) return // skip stale news
@@ -69,18 +74,18 @@ async function fetchRawNews(): Promise<RawNewsItem[]> {
     } catch { /* skip */ }
   }
 
-  // Also pull company-specific news for the mega-cap tech names that move Nasdaq
+  // Company-specific news for mega-cap tech names that move Nasdaq
   const techSymbols = ['NVDA', 'MSFT', 'AAPL', 'AMZN', 'META', 'GOOGL', 'AMD', 'AVGO']
   const today = new Date().toISOString().split('T')[0]
-  const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0]
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
 
-  for (const sym of techSymbols.slice(0, 4)) { // limit to avoid rate limits
+  for (const sym of techSymbols) {
     try {
-      const r = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${sym}&from=${twoDaysAgo}&to=${today}&token=${FH_KEY}`, { next: { revalidate: 60 } })
+      const r = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${sym}&from=${yesterday}&to=${today}&token=${FH_KEY}`, { cache: 'no-store' })
       if (!r.ok) continue
       const j = await r.json()
       if (Array.isArray(j)) {
-        j.slice(0, 4).forEach((a: { id: number; headline: string; summary: string; source: string; url: string; datetime: number }) => {
+        j.slice(0, 3).forEach((a: { id: number; headline: string; summary: string; source: string; url: string; datetime: number }) => {
           if (!a.headline) return
           const publishedAt = new Date(a.datetime * 1000)
           if (Date.now() - publishedAt.getTime() > maxAgeMs) return // skip stale news
@@ -110,7 +115,7 @@ async function fetchRawNews(): Promise<RawNewsItem[]> {
 async function classifyBatch(items: RawNewsItem[], groqKey: string): Promise<RadarEvent[]> {
   if (items.length === 0 || !groqKey) return []
 
-  const batchInput = items.slice(0, 20).map(i => ({
+  const batchInput = items.slice(0, 25).map(i => ({
     id: i.id, headline: i.headline, summary: i.summary, source: i.source, publishedAt: i.publishedAt,
   }))
 
@@ -124,7 +129,7 @@ async function classifyBatch(items: RawNewsItem[], groqKey: string): Promise<Rad
         temperature: 0.3,
         messages: [
           { role: 'system', content: RADAR_SYSTEM },
-          { role: 'user', content: `Clasifica estas noticias:\n\n${JSON.stringify(batchInput, null, 2)}` },
+          { role: 'user', content: `Fecha y hora actual: ${new Date().toISOString()}\n\nClasifica estas noticias (solo importancia media o alta, descarta el resto):\n\n${JSON.stringify(batchInput, null, 2)}` },
         ],
       }),
     })
@@ -138,6 +143,7 @@ async function classifyBatch(items: RawNewsItem[], groqKey: string): Promise<Rad
     const results: RadarEvent[] = []
     for (const c of classified) {
       if (c.relevant === false) continue
+      if (c.importance === 'baja') continue // extra safety filter
       const original = items.find(i => i.id === c.id)
       if (!original) continue
       results.push({
@@ -162,7 +168,7 @@ async function classifyBatch(items: RawNewsItem[], groqKey: string): Promise<Rad
   } catch { return [] }
 }
 
-// ─── Fallback: realistic demo radar events ────────────────────────────
+// ─── Fallback: realistic demo radar events (timestamps always "fresh") ─
 function mockRadarEvents(): RadarEvent[] {
   const now = Date.now()
   return [
@@ -241,20 +247,19 @@ export async function GET(req: Request) {
 
     const classified = await classifyBatch(raw, groqKey)
     if (classified.length === 0) {
-      return NextResponse.json({ data: mockRadarEvents(), mock: true, reason: 'CLASSIFY_FAILED', updatedAt: new Date().toISOString() })
+      return NextResponse.json({ data: mockRadarEvents(), mock: true, reason: 'CLASSIFY_FAILED', updatedAt: new Date().toISOString(), rawCount: raw.length })
     }
 
-    // Sort: breaking first, then by importance + impact strength
-    const importanceRank = { alta: 3, media: 2, baja: 1 }
+    const importanceRank = { alta: 2, media: 1 }
     classified.sort((a, b) => {
       if (a.isBreaking !== b.isBreaking) return a.isBreaking ? -1 : 1
-      const ai = importanceRank[a.importance] * 10 + a.impactStrength
-      const bi = importanceRank[b.importance] * 10 + b.impactStrength
+      const ai = importanceRank[a.importance as 'alta'|'media'] * 10 + a.impactStrength
+      const bi = importanceRank[b.importance as 'alta'|'media'] * 10 + b.impactStrength
       return bi - ai
     })
 
     return NextResponse.json({ data: classified, mock: false, updatedAt: new Date().toISOString() })
-  } catch {
-    return NextResponse.json({ data: mockRadarEvents(), mock: true, reason: 'ERROR', updatedAt: new Date().toISOString() })
+  } catch (err) {
+    return NextResponse.json({ data: mockRadarEvents(), mock: true, reason: 'ERROR', updatedAt: new Date().toISOString(), error: String(err) })
   }
 }
