@@ -25,7 +25,7 @@ const reasonMessages: Record<string, string> = {
   NO_KEYS:     'Agrega tus keys de Groq y Finnhub en Settings (⚙) para datos reales',
   NO_FINNHUB:  'Agrega tu key de Finnhub en Settings (⚙) para noticias en vivo',
   NO_GROQ:     'Agrega tu key de Groq en Settings (⚙) para clasificación IA',
-  NO_FRESH_NEWS: 'No hay noticias nuevas en las últimas 6 horas — mostrando contexto reciente',
+  NO_FRESH_NEWS: 'Sin noticias relevantes muy recientes — mostrando contexto de respaldo',
   CLASSIFY_FAILED: 'Error al clasificar noticias — reintentando',
   ERROR:       'Error temporal — mostrando datos de respaldo',
 }
@@ -77,14 +77,12 @@ export function RadarView({ events, gauge, snapshot, fred, isMock, mockReason, i
         <MasterAnalysisCard events={events} gauge={gauge} snapshot={snapshot} fred={fred} />
       </div>
 
-      {/* Two-column: volatility + feed */}
-      <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-2.5 flex-1 min-h-0">
+      {/* Three-column layout: volatility/filters | calendar (wide) | news feed (narrow) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[170px_360px_1fr] gap-2.5 flex-1 min-h-0">
 
-        {/* Left: Volatility + filters */}
+        {/* Col 1: Volatility + category filters */}
         <div className="flex flex-col gap-2.5 overflow-y-auto">
           <VolatilityGaugeCard gauge={gauge} snapshot={snapshot} />
-
-          <FxCalendarCard />
 
           <div className="bg-surface-container-lowest border border-outline-variant p-2">
             <div className="font-mono text-[8px] text-outline uppercase px-1 mb-1">Filtrar</div>
@@ -108,14 +106,19 @@ export function RadarView({ events, gauge, snapshot, fred, isMock, mockReason, i
           </div>
         </div>
 
-        {/* Right: Compact event feed */}
+        {/* Col 2: Economic calendar — wide, the star of this row */}
+        <div className="overflow-hidden min-h-0">
+          <FxCalendarCard />
+        </div>
+
+        {/* Col 3: Compact news feed */}
         <div className="overflow-y-auto space-y-1.5 min-h-0">
           {isLoading && filtered.length === 0 ? (
-            Array(3).fill(0).map((_, i) => <div key={i} className="bg-surface-container border border-outline-variant h-12 animate-pulse" />)
+            Array(3).fill(0).map((_, i) => <div key={i} className="bg-surface-container border border-outline-variant h-11 animate-pulse" />)
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-outline py-8">
-              <span className="material-symbols-outlined text-[28px] mb-2 opacity-40">radar</span>
-              <div className="font-mono text-[10px]">Sin eventos en esta categoría</div>
+              <span className="material-symbols-outlined text-[24px] mb-2 opacity-40">radar</span>
+              <div className="font-mono text-[9px]">Sin eventos en esta categoría</div>
             </div>
           ) : (
             filtered.map(ev => <RadarEventCard key={ev.id} event={ev} />)
